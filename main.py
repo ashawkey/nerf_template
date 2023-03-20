@@ -25,7 +25,7 @@ if __name__ == '__main__':
     parser.add_argument('--camera_traj', type=str, default='', help="nerfstudio compatible json file for camera trajactory")
 
     ### dataset options
-    parser.add_argument('--data_format', type=str, default='nerf', choices=['nerf', 'colmap', 'dtu'])
+    parser.add_argument('--data_format', type=str, default='colmap', choices=['nerf', 'colmap', 'dtu'])
     parser.add_argument('--train_split', type=str, default='train', choices=['train', 'trainval', 'all'])
     parser.add_argument('--preload', action='store_true', help="preload all data into GPU, accelerate training but use more GPU memory")
     parser.add_argument('--random_image_batch', action='store_true', help="randomly sample rays from all images per step in training")
@@ -94,7 +94,6 @@ if __name__ == '__main__':
         opt.mark_untrained = True
         opt.adaptive_num_rays = True
         opt.random_image_batch = True
-        opt.mesh_visibility_culling = True
     
     if opt.O2:
         opt.lr = 2e-3
@@ -104,10 +103,9 @@ if __name__ == '__main__':
         opt.contract = True
         opt.adaptive_num_rays = True
         opt.random_image_batch = True
-        opt.mesh_visibility_culling = True
     
     if opt.contract:
-        # mark untrained is not very correct in contraction mode...
+        # mark untrained is not correct in contraction mode...
         opt.mark_untrained = False
 
     if opt.data_format == 'colmap':
