@@ -200,7 +200,7 @@ class ColmapDataset:
 
         # auto-scale
         if self.scale == -1:
-            self.scale = 1 / np.linalg.norm(self.poses[:, :3, 3], axis=-1).min()
+            self.scale = 1 / np.linalg.norm(self.poses[:, :3, 3], axis=-1).max()
             print(f'[INFO] ColmapDataset: auto-scale {self.scale:.4f}')
 
         self.poses[:, :3, 3] *= self.scale

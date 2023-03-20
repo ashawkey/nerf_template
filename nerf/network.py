@@ -37,11 +37,11 @@ class NeRFNetwork(NeRFRenderer):
 
         # grid
         self.grid_encoder, self.grid_in_dim = get_encoder("hashgrid", input_dim=3, level_dim=2, num_levels=16, log2_hashmap_size=19, desired_resolution=2048 * self.bound)
-        self.grid_mlp = MLP(self.grid_in_dim, 1 + 15, 64, 3, bias=True)
+        self.grid_mlp = MLP(self.grid_in_dim, 1 + 15, 64, 3, bias=False)
 
         # view-dependency
         self.view_encoder, self.view_in_dim = get_encoder('sh', input_dim=3, degree=4)
-        self.view_mlp = MLP(15 + self.view_in_dim, 3, 32, 3, bias=True)
+        self.view_mlp = MLP(15 + self.view_in_dim, 3, 32, 3, bias=False)
 
         # proposal network
         if not self.opt.cuda_ray:
@@ -49,13 +49,13 @@ class NeRFNetwork(NeRFRenderer):
             self.prop_mlp = nn.ModuleList()
 
             # hard coded 2-layer prop network
-            prop0_encoder, prop0_in_dim = get_encoder("hashgrid", input_dim=3, level_dim=2, num_levels=8, log2_hashmap_size=17, desired_resolution=64)
-            prop0_mlp = MLP(prop0_in_dim, 1, 16, 2, bias=True)
+            prop0_encoder, prop0_in_dim = get_encoder("hashgrid", input_dim=3, level_dim=2, num_levels=5, log2_hashmap_size=17, desired_resolution=128)
+            prop0_mlp = MLP(prop0_in_dim, 1, 16, 2, bias=False)
             self.prop_encoders.append(prop0_encoder)
             self.prop_mlp.append(prop0_mlp)
 
-            prop1_encoder, prop1_in_dim = get_encoder("hashgrid", input_dim=3, level_dim=2, num_levels=8, log2_hashmap_size=17, desired_resolution=256)
-            prop1_mlp = MLP(prop1_in_dim, 1, 16, 2, bias=True)
+            prop1_encoder, prop1_in_dim = get_encoder("hashgrid", input_dim=3, level_dim=2, num_levels=5, log2_hashmap_size=17, desired_resolution=256)
+            prop1_mlp = MLP(prop1_in_dim, 1, 16, 2, bias=False)
             self.prop_encoders.append(prop1_encoder)
             self.prop_mlp.append(prop1_mlp)
 
@@ -72,7 +72,7 @@ class NeRFNetwork(NeRFRenderer):
     def forward(self, x, d, **kwargs):
         # x: [N, 3], in [-bound, bound]
         # d: [N, 3], nomalized in [-1, 1]
-
+        
         sigma, feat = self.common_forward(x)
 
         d = self.view_encoder(d)
@@ -98,6 +98,9 @@ class NeRFNetwork(NeRFRenderer):
         return {
             'sigma': sigma,
         }
+    
+    def apply_total_variation(self, lambda_tv):
+        self.grid_encoder.grad_total_variation(lambda_tv)
 
     # optimizer utils
     def get_params(self, lr):

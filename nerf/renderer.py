@@ -29,6 +29,7 @@ def distort_loss(bins, weights):
 
     return loss
 
+
 @torch.cuda.amp.autocast(enabled=False)
 def proposal_loss(all_bins, all_weights):
     # all_bins: list of [N, T+1]
@@ -55,6 +56,7 @@ def proposal_loss(all_bins, all_weights):
 
     return loss
 
+
 # MeRF-like contraction
 @torch.cuda.amp.autocast(enabled=False)
 def contract(x):
@@ -67,6 +69,7 @@ def contract(x):
     z = torch.where(mag < 1, x, x * scale)
     return z.view(*shape, C)
 
+
 @torch.cuda.amp.autocast(enabled=False)
 def uncontract(z):
     # z: [..., C]
@@ -77,6 +80,7 @@ def uncontract(z):
     scale.scatter_(1, idx, 1 / (2 * mag - mag * mag).clamp(min=1e-8))
     x = torch.where(mag < 1, z, z * scale)
     return x.view(*shape, C)
+
 
 @torch.cuda.amp.autocast(enabled=False)
 def sample_pdf(bins, weights, T, perturb=False):
@@ -114,6 +118,7 @@ def sample_pdf(bins, weights, T, perturb=False):
 
     return bins
 
+
 @torch.cuda.amp.autocast(enabled=False)
 def near_far_from_aabb(rays_o, rays_d, aabb, min_near=0.05):
     # rays: [N, 3], [N, 3]
@@ -132,6 +137,7 @@ def near_far_from_aabb(rays_o, rays_d, aabb, min_near=0.05):
     near = torch.clamp(near, min=min_near)
 
     return near, far
+
 
 class NeRFRenderer(nn.Module):
     def __init__(self, opt):
@@ -259,8 +265,9 @@ class NeRFRenderer(nn.Module):
             target_reso = self.opt.env_reso
             decimate_target //= 2 # empirical...
 
-            all_indices = torch.arange(reso**3, device=device, dtype=torch.int)
-            all_coords = raymarching.morton3D_invert(all_indices).cpu().numpy()
+            if self.cuda_ray:
+                all_indices = torch.arange(reso**3, device=device, dtype=torch.int)
+                all_coords = raymarching.morton3D_invert(all_indices).cpu().numpy()
 
             # for each cas >= 1
             for cas in range(1, self.cascade):
@@ -371,7 +378,7 @@ class NeRFRenderer(nn.Module):
 
             return results
 
-    def run(self, rays_o, rays_d, index=None, bg_color=None, perturb=False, cam_near_far=None, shading='full'):
+    def run(self, rays_o, rays_d, bg_color=None, perturb=False, cam_near_far=None, shading='full', update_proposal=True, **kwargs):
         # rays_o, rays_d: [N, 3]
         # return: image: [N, 3], depth: [N]
 
@@ -398,6 +405,13 @@ class NeRFRenderer(nn.Module):
             all_bins = []
             all_weights = []
 
+        # sample xyzs using a mixed linear + lindisp function
+        spacing_fn = lambda x: torch.where(x < 1, x / 2, 1 - 1 / (2 * x))
+        spacing_fn_inv = lambda x: torch.where(x < 0.5, 2 * x, 1 / (2 - 2 * x))
+        
+        s_nears = spacing_fn(nears) # [N]
+        s_fars = spacing_fn(fars) # [N]
+        
         bins = None
         weights = None
 
@@ -414,15 +428,16 @@ class NeRFRenderer(nn.Module):
                 # pdf sampling.
                 bins = sample_pdf(bins, weights, self.opt.num_steps[prop_iter] + 1, perturb).detach() # [N, T+1]
 
-            # sample xyzs
-            real_bins = nears * (1 - bins) + fars * bins # [N, T+1] in [near, far]
+            real_bins = spacing_fn_inv(s_nears * (1 - bins) + s_fars * bins) # [N, T+1] in [near, far]
+
             rays_t = (real_bins[..., 1:] + real_bins[..., :-1]) / 2 # [N, T]
 
             xyzs = rays_o.unsqueeze(1) + rays_d.unsqueeze(1) * rays_t.unsqueeze(2) # [N, T, 3]
             
             if prop_iter != len(self.opt.num_steps) - 1:
                 # query proposal density
-                sigmas = self.density(xyzs if not self.opt.contract else contract(xyzs), proposal=prop_iter)['sigma'] # [N, T]
+                with torch.set_grad_enabled(update_proposal):
+                    sigmas = self.density(xyzs if not self.opt.contract else contract(xyzs), proposal=prop_iter)['sigma'] # [N, T]
             else:
                 # last iter: query nerf
                 dirs = rays_d.view(-1, 1, 3).expand_as(xyzs) # [N, T, 3]
@@ -434,6 +449,10 @@ class NeRFRenderer(nn.Module):
             # sigmas to weights
             deltas = (real_bins[..., 1:] - real_bins[..., :-1]) # [N, T]
             deltas_sigmas = deltas * sigmas # [N, T]
+
+            # opaque background
+            if self.opt.background == 'last_sample':
+                deltas_sigmas = torch.cat([deltas_sigmas[..., :-1], torch.full_like(deltas_sigmas[..., -1:], torch.inf)], dim=-1)
 
             alphas = 1 - torch.exp(-deltas_sigmas) # [N, T]
             transmittance = torch.cumsum(deltas_sigmas[..., :-1], dim=-1) # [N, T-1]
@@ -454,10 +473,11 @@ class NeRFRenderer(nn.Module):
 
         # extra results
         if self.training:
-            results['num_points'] = xyzs.shape[0]
+            results['num_points'] = xyzs.shape[0] * xyzs.shape[1]
+            results['weights'] = weights
 
-            if self.opt.lambda_proposal > 0:
-                results['proposal_loss'] = proposal_loss(all_bins, all_weights)
+            if self.opt.lambda_proposal > 0 and update_proposal:
+                    results['proposal_loss'] = proposal_loss(all_bins, all_weights)
             
             if self.opt.lambda_distort > 0:
                 results['distort_loss'] = distort_loss(bins, weights)
@@ -470,7 +490,7 @@ class NeRFRenderer(nn.Module):
 
         return results
 
-    def run_cuda(self, rays_o, rays_d, index=None, bg_color=None, perturb=False, cam_near_far=None, shading='full'):
+    def run_cuda(self, rays_o, rays_d, bg_color=None, perturb=False, cam_near_far=None, shading='full', **kwargs):
         # rays_o, rays_d: [N, 3]
         # return: image: [N, 3], depth: [N]
         
@@ -481,7 +501,7 @@ class NeRFRenderer(nn.Module):
         device = rays_o.device
 
         # pre-calculate near far
-        nears, fars = near_far_from_aabb(rays_o, rays_d, self.aabb_train if self.training else self.aabb_infer, self.min_near)
+        nears, fars = raymarching.near_far_from_aabb(rays_o, rays_d, self.aabb_train if self.training else self.aabb_infer, self.min_near)
         if cam_near_far is not None:
             nears = torch.maximum(nears, cam_near_far[:, 0])
             fars = torch.minimum(fars, cam_near_far[:, 1])
@@ -518,7 +538,7 @@ class NeRFRenderer(nn.Module):
             
             n_alive = N
             rays_alive = torch.arange(n_alive, dtype=torch.int32, device=device) # [N]
-            rays_t = nears.clone().squeeze(1) # [N]
+            rays_t = nears.clone() # [N]
 
             step = 0
             
@@ -759,7 +779,6 @@ class NeRFRenderer(nn.Module):
             # ema update
             valid_mask = (self.density_grid >= 0) & (tmp_grid >= 0)
             
-        
         self.density_grid[valid_mask] = torch.maximum(self.density_grid[valid_mask] * decay, tmp_grid[valid_mask])
 
         self.mean_density = torch.mean(self.density_grid.clamp(min=0)).item() # -1 regions are viewed as 0 density.
@@ -768,7 +787,6 @@ class NeRFRenderer(nn.Module):
 
         # convert to bitfield
         density_thresh = min(self.mean_density, self.density_thresh)
-        # density_thresh = 0 if self.iter_density < 64 else self.density_thresh
         self.density_bitfield = raymarching.packbits(self.density_grid.detach(), density_thresh, self.density_bitfield)
 
         # print(f'[density grid] min={self.density_grid.min().item():.4f}, max={self.density_grid.max().item():.4f}, mean={self.mean_density:.4f}, occ_rate={(self.density_grid > density_thresh).sum() / (128**3 * self.cascade):.3f}')

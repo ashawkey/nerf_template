@@ -102,7 +102,11 @@ class NeRFNetwork(NeRFRenderer):
             else: # full
                 color = (specular + diffuse) # specular + albedo
 
-        return sigma, color, specular
+        return {
+            'sigma': sigma,
+            'color': color,
+            'specular': specular,
+        }
 
 
     def density(self, x, proposal=-1):
@@ -117,6 +121,12 @@ class NeRFNetwork(NeRFRenderer):
         return {
             'sigma': sigma,
         }
+    
+    def apply_total_variation(self, lambda_tv):
+        self.grid_encoder.grad_total_variation(lambda_tv)
+        self.planeXY_encoder.grad_total_variation(lambda_tv)
+        self.planeXZ_encoder.grad_total_variation(lambda_tv)
+        self.planeYZ_encoder.grad_total_variation(lambda_tv)
 
     # optimizer utils
     def get_params(self, lr):

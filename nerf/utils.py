@@ -38,17 +38,6 @@ def custom_meshgrid(*args):
     else:
         return torch.meshgrid(*args, indexing='ij')
 
-
-@torch.jit.script
-def linear_to_srgb(x):
-    return torch.where(x < 0.0031308, 12.92 * x, 1.055 * x ** 0.41666 - 0.055)
-
-
-@torch.jit.script
-def srgb_to_linear(x):
-    return torch.where(x < 0.04045, x / 12.92, ((x + 0.055) / 1.055) ** 2.4)
-
-
 def plot_pointcloud(pc, color=None):
     # pc: [N, 3]
     # color: [N, 3/4]
@@ -510,42 +499,28 @@ class Trainer(object):
 
         N, C = images.shape
 
-        if self.opt.color_space == 'linear':
-            images[..., :3] = srgb_to_linear(images[..., :3])
-
-        # if C == 3:
-        #     bg_color = 1
-        # # train with random background color if not using a bg model and has alpha channel.
-        # else:
-        #     #bg_color = torch.ones(3, device=self.device) # [3], fixed white background
-        #     # bg_color = torch.rand(3, device=self.device) # [3], frame-wise random.
-        #     bg_color = torch.rand(N, 3, device=self.device) # [N, 3], pixel-wise random.
-
-        if self.opt.background == 'white':
-            bg_color = 1
-        else: # random
+        if self.opt.background == 'random':
             bg_color = torch.rand(N, 3, device=self.device) # [N, 3], pixel-wise random.
+        else: # white / last_sample
+            bg_color = 1
 
         if C == 4:
             gt_rgb = images[..., :3] * images[..., 3:] + bg_color * (1 - images[..., 3:])
         else:
             gt_rgb = images
         
-        if self.global_step < self.opt.diffuse_step:
-            shading = 'diffuse'
-        else:
-            shading = 'full'
+        shading = 'diffuse' if self.global_step < self.opt.diffuse_step else 'full'
+        update_proposal = self.global_step <= 3000 or self.global_step % 5 == 0
+        
+        outputs = self.model.render(rays_o, rays_d, index=index, bg_color=bg_color, perturb=True, cam_near_far=cam_near_far, shading=shading, update_proposal=update_proposal)
 
         # MSE loss
-        outputs = self.model.render(rays_o, rays_d, index=index, bg_color=bg_color, perturb=True, cam_near_far=cam_near_far, shading=shading)
-
         pred_rgb = outputs['image']
         loss = self.criterion(pred_rgb, gt_rgb).mean(-1) # [N, 3] --> [N]
     
         loss = loss.mean()
 
-        # extra loss...
-
+        # extra loss
         if 'proposal_loss' in outputs and self.opt.lambda_proposal > 0:
             loss = loss + self.opt.lambda_proposal * outputs['proposal_loss']
 
@@ -577,10 +552,7 @@ class Trainer(object):
             self.scaler.unscale_(self.optimizer)
 
             # different tv weights for inner and outer points
-            self.model.grid_encoder.grad_total_variation(lambda_tv)
-            self.model.planeXY_encoder.grad_total_variation(lambda_tv)
-            self.model.planeYZ_encoder.grad_total_variation(lambda_tv)
-            self.model.planeXZ_encoder.grad_total_variation(lambda_tv)
+            self.model.apply_total_variation(lambda_tv)
                 
 
     def eval_step(self, data):
@@ -593,10 +565,7 @@ class Trainer(object):
 
         cam_near_far = data['cam_near_far'] if 'cam_near_far' in data else None # [1/N, 2] or None
 
-        if self.opt.color_space == 'linear':
-            images[..., :3] = srgb_to_linear(images[..., :3])
-
-        # eval with fixed background color
+        # eval with fixed white background color
         bg_color = 1
         if C == 4:
             gt_rgb = images[..., :3] * images[..., 3:] + bg_color * (1 - images[..., 3:])
@@ -706,10 +675,6 @@ class Trainer(object):
             for i, data in enumerate(loader):
                 
                 preds, preds_depth = self.test_step(data)
-
-                if self.opt.color_space == 'linear':
-                    preds = linear_to_srgb(preds)
-
                 pred = preds.detach().cpu().numpy()
                 pred = (pred * 255).astype(np.uint8)
 
@@ -844,9 +809,6 @@ class Trainer(object):
             preds = F.interpolate(preds.unsqueeze(0).permute(0, 3, 1, 2), size=(H, W), mode='nearest').permute(0, 2, 3, 1).squeeze(0).contiguous()
             preds_depth = F.interpolate(preds_depth.unsqueeze(0).unsqueeze(1), size=(H, W), mode='nearest').squeeze(0).squeeze(1)
 
-        if self.opt.color_space == 'linear':
-            preds = linear_to_srgb(preds)
-
         pred = preds.detach().cpu().numpy()
         pred_depth = preds_depth.detach().cpu().numpy()
 
@@ -942,7 +904,7 @@ class Trainer(object):
             else:
                 self.lr_scheduler.step()
 
-        self.log(f"==> Finished Epoch {self.epoch}.")
+        self.log(f"==> Finished Epoch {self.epoch}, loss={average_loss:.6f}.")
 
 
     def evaluate_one_epoch(self, loader, name=None):
@@ -1008,9 +970,6 @@ class Trainer(object):
 
                     #self.log(f"==> Saving validation image to {save_path}")
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
-                    if self.opt.color_space == 'linear':
-                        preds = linear_to_srgb(preds)
 
                     pred = preds.detach().cpu().numpy()
                     pred = (pred * 255).astype(np.uint8)

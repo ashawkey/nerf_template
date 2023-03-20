@@ -41,12 +41,11 @@ if __name__ == '__main__':
     ### training options
     parser.add_argument('--iters', type=int, default=30000, help="training iters")
     parser.add_argument('--lr', type=float, default=1e-2, help="initial learning rate")
-    parser.add_argument('--pos_gradient_boost', type=float, default=1, help="nvdiffrast option")
     parser.add_argument('--cuda_ray', action='store_true', help="use CUDA raymarching instead of pytorch")
     parser.add_argument('--max_steps', type=int, default=1024, help="max num steps sampled per ray (only valid when using --cuda_ray)")
-
     parser.add_argument('--num_steps', type=int, nargs='*', default=[256, 96, 48], help="num steps sampled per ray for each proposal level (only valid when NOT using --cuda_ray)")
-    # parser.add_argument('--num_steps', type=int, nargs='*', default=[64, 64], help="num steps sampled per ray for each proposal level (only valid when NOT using --cuda_ray)")
+    parser.add_argument('--contract', action='store_true', help="apply spatial contraction as in mip-nerf 360, only work for bound > 1, will override bound to 2.")
+    parser.add_argument('--background', type=str, default='last_sample', choices=['white', 'random', 'last_sample'], help="training background mode")
 
     parser.add_argument('--update_extra_interval', type=int, default=16, help="iter interval to update extra status (only valid when using --cuda_ray)")
     parser.add_argument('--max_ray_batch', type=int, default=4096 * 4, help="batch size of rays at inference to avoid OOM (only valid when NOT using --cuda_ray)")
@@ -54,8 +53,7 @@ if __name__ == '__main__':
     parser.add_argument('--mark_untrained', action='store_true', help="mark_untrained grid")
     parser.add_argument('--dt_gamma', type=float, default=1/256, help="dt_gamma (>=0) for adaptive ray marching. set to 0 to disable, >0 to accelerate rendering (but usually with worse quality)")
     parser.add_argument('--density_thresh', type=float, default=10, help="threshold for density grid to be occupied")
-    parser.add_argument('--diffuse_step', type=int, default=1000, help="training iters that only trains diffuse color for better initialization")
-    parser.add_argument('--background', type=str, default='random', choices=['white', 'random'], help="training background mode")
+    parser.add_argument('--diffuse_step', type=int, default=0, help="training iters that only trains diffuse color for better initialization")
     
     # batch size related
     parser.add_argument('--num_rays', type=int, default=4096, help="num rays sampled per image for each training step")
@@ -63,15 +61,10 @@ if __name__ == '__main__':
     parser.add_argument('--num_points', type=int, default=2 ** 18, help="target num points for each training step, only work with adaptive num_rays")
 
     # regularizations
-    parser.add_argument('--lambda_density', type=float, default=0, help="loss scale")
     parser.add_argument('--lambda_entropy', type=float, default=0, help="loss scale")
-    parser.add_argument('--lambda_tv', type=float, default=0, help="loss scale")
+    parser.add_argument('--lambda_tv', type=float, default=1e-7, help="loss scale")
     parser.add_argument('--lambda_proposal', type=float, default=1, help="loss scale (only for non-cuda-ray mode)")
-    parser.add_argument('--lambda_distort', type=float, default=0.002, help="loss scale (only for non-cuda-ray mode)")
-
-    # unused
-    parser.add_argument('--contract', action='store_true', help="apply L-INF ray contraction as in mip-nerf, only work for bound > 1, will override bound to 2.")
-    parser.add_argument('--color_space', type=str, default='srgb', help="Color space, supports (linear, srgb)")
+    parser.add_argument('--lambda_distort', type=float, default=0.001, help="loss scale (only for non-cuda-ray mode)")
 
     ### mesh options
     parser.add_argument('--mcubes_reso', type=int, default=512, help="resolution for marching cubes")
@@ -104,11 +97,12 @@ if __name__ == '__main__':
         opt.mesh_visibility_culling = True
     
     if opt.O2:
-        opt.lr = 1e-3
+        opt.lr = 2e-3
         opt.fp16 = True
         opt.bound = 128 # large enough
         opt.preload = True
         opt.contract = True
+        opt.adaptive_num_rays = True
         opt.random_image_batch = True
         opt.mesh_visibility_culling = True
     
@@ -150,11 +144,11 @@ if __name__ == '__main__':
 
                 trainer.test(test_loader, write_video=True) # test and save video
             
-            if not opt.test_no_mesh:
-                # need train loader to get camera poses for visibility test
-                if opt.mesh_visibility_culling:
-                    train_loader = NeRFDataset(opt, device=device, type=opt.train_split).dataloader()
-                trainer.save_mesh(resolution=opt.mcubes_reso, decimate_target=opt.decimate_target, dataset=train_loader._data if opt.mesh_visibility_culling else None)
+            # if not opt.test_no_mesh:
+            #     # need train loader to get camera poses for visibility test
+            #     if opt.mesh_visibility_culling:
+            #         train_loader = NeRFDataset(opt, device=device, type=opt.train_split).dataloader()
+            #     trainer.save_mesh(resolution=opt.mcubes_reso, decimate_target=opt.decimate_target, dataset=train_loader._data if opt.mesh_visibility_culling else None)
         
     else:
         
@@ -168,7 +162,7 @@ if __name__ == '__main__':
         print(f'[INFO] max_epoch {max_epoch}, eval every {eval_interval}, save every {save_interval}.')
 
         # colmap can estimate a more compact AABB
-        if opt.data_format == 'colmap':
+        if not opt.contract and opt.data_format == 'colmap':
             model.update_aabb(train_loader._data.pts_aabb)
 
         scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.1 ** min(iter / opt.iters, 1))
@@ -196,4 +190,4 @@ if __name__ == '__main__':
                 trainer.evaluate(test_loader) # blender has gt, so evaluate it.
             
             trainer.test(test_loader, write_video=True) # test and save video
-            trainer.save_mesh(resolution=opt.mcubes_reso, decimate_target=opt.decimate_target, dataset=train_loader._data if opt.mesh_visibility_culling else None)
+            # trainer.save_mesh(resolution=opt.mcubes_reso, decimate_target=opt.decimate_target, dataset=train_loader._data if opt.mesh_visibility_culling else None)

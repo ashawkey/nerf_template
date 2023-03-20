@@ -1,0 +1,7 @@
+CUDA_VISIBLE_DEVICES=1 python main.py data/room/ --workspace trial_nerfacto_360_room        --data_format colmap --enable_cam_center --enable_cam_near_far --downscale 4 -O2
+CUDA_VISIBLE_DEVICES=1 python main.py data/bonsai/ --workspace trial_nerfacto_360_bonsai    --data_format colmap --enable_cam_center --enable_cam_near_far --downscale 4 -O2
+CUDA_VISIBLE_DEVICES=1 python main.py data/kitchen/ --workspace trial_nerfacto_360_kitchen  --data_format colmap --enable_cam_center --enable_cam_near_far --downscale 4 -O2
+CUDA_VISIBLE_DEVICES=1 python main.py data/counter/ --workspace trial_nerfacto_360_counter  --data_format colmap --enable_cam_center --enable_cam_near_far --downscale 4 -O2
+CUDA_VISIBLE_DEVICES=1 python main.py data/garden/ --workspace trial_nerfacto_360_garden    --data_format colmap --enable_cam_center --enable_cam_near_far --downscale 4 -O2
+CUDA_VISIBLE_DEVICES=1 python main.py data/stump/ --workspace trial_nerfacto_360_stump      --data_format colmap --enable_cam_center --enable_cam_near_far --downscale 4 -O2
+CUDA_VISIBLE_DEVICES=1 python main.py data/bicycle/ --workspace trial_nerfacto_360_bicycle  --data_format colmap --enable_cam_center --enable_cam_near_far --downscale 4 -O2

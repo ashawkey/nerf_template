@@ -1,7 +1,13 @@
 # nerf-template
 
-A simple template for NeRF projects.
-This is basically a clean and improved version of [torch-ngp]().
+A simple template for practicing NeRF projects.
+This is basically a clean and enhanced version of [torch-ngp](https://github.com/ashawkey/torch-ngp) for static scene reconstruction.
+Notable changes that improves performance:
+* dataset: random sampling from all training images at each step.
+* dataset: adaptive number of rays during training based on number of points evaluated.
+* model: proposal network for sampling points (non --cuda_ray mode).
+* model: spatial contraction for unbounded scenes.
+
 
 # Install
 
@@ -45,9 +51,9 @@ First time running will take some time to compile the CUDA extensions.
 # prune sampling points by maintaining a density grid
 python main.py data/bonsai/ --workspace trial_bonsai_ngp --data_format colmap --enable_cam_center --enable_cam_near_far --downscale 4 -O --bound 8
 
-# -O2: nerfstudio nerfacto / mip-nerf 360
+# -O2: nerfstudio nerfacto
 # use proposal network to predict sampling points
-python main.py data/bonsai/ --workspace trial_bonsai_prp --data_format colmap --enable_cam_center --enable_cam_near_far --downscale 4 -O2
+python main.py data/bonsai/ --workspace trial_bonsai_nerfacto --data_format colmap --enable_cam_center --enable_cam_near_far --downscale 4 -O2
 ```
 
 Processing custom datasets:
@@ -59,13 +65,27 @@ python scripts/colmap2nerf.py --images ./data/custom/images/ --run_colmap # if u
 
 ### Advanced Usage
 ```bash
-### -O: the recommended setting, equals
---fp16 --preload --mark_untrained --random_image_batch --adaptive_num_rays --mesh_visibility_culling
+### -O: equals
+--lr 1e-2 --fp16 --preload
+--cuda_ray --mark_untrained
+--adaptive_num_rays --random_image_batch
+--mesh_visibility_culling
+
+### -O2: equals
+--lr 2e-3 --fp16 --preload
+--contract --bound 128
+--adaptive_num_rays --random_image_batch 
+--mesh_visibility_culling
 
 ### load checkpoint
 --ckpt latest # by default we load the latest checkpoint in the workspace
 --ckpt scratch # train from scratch.
 --ckpt trial/checkpoints/xxx.pth # specify it by path
+
+### training
+--num_rays 4096 # number of rays to evaluate per training step
+--adaptive_num_rays # ignore --num_rays and use --num_points to dynamically adjust number of rays.
+--num_points 262144 # targeted number of points to evaluate per training step (to adjust num_rays)
 
 ### testing
 --test # test, save video and mesh
@@ -74,11 +94,11 @@ python scripts/colmap2nerf.py --images ./data/custom/images/ --run_colmap # if u
 
 ### dataset related
 --data_format [colmap|nerf] # dataset format
---enable_cam_center # use camera center instead of sparse point center as scene center (colmap dataset only)
+--enable_cam_center # use camera center instead of sparse point cloud center as the scene center (colmap dataset only) (only for 360-degree captured datasets, do not use this for forward-facing datasets!)
 --enable_cam_near_far # estimate camera near & far from sparse points (colmap dataset only)
 
---bound 16 # scene bound set to [-16, 16]^3
---scale 0.3 # camera scale, if not specified, automatically estimate one based on camera positions. Important targets should be scaled into the center [-1, 1]^3.
+--bound 16 # scene bound set to [-16, 16]^3.
+--scale 0.3 # camera scale, if not specified, automatically estimate one based on camera positions.
 
 ### visualization 
 --vis_pose # viusalize camera poses and sparse points (sparse points are colmap dataset only)
@@ -96,7 +116,9 @@ python scripts/colmap2nerf.py --images ./data/custom/images/ --run_colmap # if u
 --clean_min_d 5 # isolated floaters with smaller diameter will be removed
 --clean_min_f 8 # isolated floaters with fewer faces will be removed
 --visibility_mask_dilation 5 # dilate iterations after performing visibility face culling
-
 ```
 
 Please check the `scripts` directory for more examples on common datasets, and check `main.py` for all options.
+
+### Performance reference 
+TODO
