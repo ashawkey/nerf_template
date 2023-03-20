@@ -37,14 +37,14 @@ class NeRFNetwork(NeRFRenderer):
 
         # grid
         self.grid_encoder, self.grid_in_dim = get_encoder("hashgrid", input_dim=3, level_dim=2, num_levels=16, log2_hashmap_size=19, desired_resolution=512)
-        self.grid_mlp = MLP(self.grid_in_dim, 8, 64, 2, bias=True)
+        self.grid_mlp = MLP(self.grid_in_dim, 8, 64, 2, bias=False)
 
         # triplane
         # NOTE: per encoder per MLP? or one MLP for all encoders?
         self.planeXY_encoder, self.plane_in_dim = get_encoder("hashgrid", input_dim=2, level_dim=2, num_levels=16, log2_hashmap_size=19, desired_resolution=2048)
         self.planeYZ_encoder, self.plane_in_dim = get_encoder("hashgrid", input_dim=2, level_dim=2, num_levels=16, log2_hashmap_size=19, desired_resolution=2048)
         self.planeXZ_encoder, self.plane_in_dim = get_encoder("hashgrid", input_dim=2, level_dim=2, num_levels=16, log2_hashmap_size=19, desired_resolution=2048)
-        self.plane_mlp = MLP(self.plane_in_dim, 8, 64, 2, bias=True)
+        self.plane_mlp = MLP(self.plane_in_dim, 8, 64, 2, bias=False)
 
         # view-dependency
         self.view_encoder, self.view_in_dim = get_encoder('frequency', input_dim=3, multires=4)
@@ -56,25 +56,23 @@ class NeRFNetwork(NeRFRenderer):
             self.prop_mlp = nn.ModuleList()
 
             # hard coded 2-layer prop network
-            prop0_encoder, prop0_in_dim = get_encoder("hashgrid", input_dim=3, level_dim=2, num_levels=8, log2_hashmap_size=17, desired_resolution=64)
-            prop0_mlp = MLP(prop0_in_dim, 1, 16, 2, bias=True)
+            prop0_encoder, prop0_in_dim = get_encoder("hashgrid", input_dim=3, level_dim=2, num_levels=5, log2_hashmap_size=17, desired_resolution=128)
+            prop0_mlp = MLP(prop0_in_dim, 1, 16, 2, bias=False)
             self.prop_encoders.append(prop0_encoder)
             self.prop_mlp.append(prop0_mlp)
 
-            prop1_encoder, prop1_in_dim = get_encoder("hashgrid", input_dim=3, level_dim=2, num_levels=8, log2_hashmap_size=17, desired_resolution=256)
-            prop1_mlp = MLP(prop1_in_dim, 1, 16, 2, bias=True)
+            prop1_encoder, prop1_in_dim = get_encoder("hashgrid", input_dim=3, level_dim=2, num_levels=5, log2_hashmap_size=17, desired_resolution=256)
+            prop1_mlp = MLP(prop1_in_dim, 1, 16, 2, bias=False)
             self.prop_encoders.append(prop1_encoder)
             self.prop_mlp.append(prop1_mlp)
 
     def common_forward(self, x):
 
-        f_grid = self.grid_encoder(x, bound=self.bound)
-        f_grid = self.grid_mlp(f_grid)
+        f_grid = self.grid_mlp(self.grid_encoder(x, bound=self.bound))
 
-        f_plane = self.planeXY_encoder(x[..., [0, 1]], bound=self.bound) + \
-                  self.planeYZ_encoder(x[..., [1, 2]], bound=self.bound) + \
-                  self.planeXZ_encoder(x[..., [0, 2]], bound=self.bound)
-        f_plane = self.plane_mlp(f_plane)
+        f_plane = self.plane_mlp(self.planeXY_encoder(x[..., [0, 1]], bound=self.bound)) + \
+                  self.plane_mlp(self.planeYZ_encoder(x[..., [1, 2]], bound=self.bound)) + \
+                  self.plane_mlp(self.planeXZ_encoder(x[..., [0, 2]], bound=self.bound))
 
         f = f_grid + f_plane
 
@@ -100,7 +98,7 @@ class NeRFNetwork(NeRFRenderer):
             if shading == 'specular':
                 color = specular
             else: # full
-                color = (specular + diffuse) # specular + albedo
+                color = (specular + diffuse).clamp(0, 1) # specular + albedo
 
         return {
             'sigma': sigma,
@@ -124,9 +122,9 @@ class NeRFNetwork(NeRFRenderer):
     
     def apply_total_variation(self, lambda_tv):
         self.grid_encoder.grad_total_variation(lambda_tv)
-        self.planeXY_encoder.grad_total_variation(lambda_tv)
-        self.planeXZ_encoder.grad_total_variation(lambda_tv)
-        self.planeYZ_encoder.grad_total_variation(lambda_tv)
+        # self.planeXY_encoder.grad_total_variation(lambda_tv)
+        # self.planeXZ_encoder.grad_total_variation(lambda_tv)
+        # self.planeYZ_encoder.grad_total_variation(lambda_tv)
 
     # optimizer utils
     def get_params(self, lr):

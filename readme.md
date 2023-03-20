@@ -4,7 +4,7 @@ A simple template for practicing NeRF projects.
 
 This is basically a clean and enhanced version of [torch-ngp](https://github.com/ashawkey/torch-ngp) focusing on static NeRF reconstruction of realistic scenes.
 
-Notable changes that improves performance:
+Notable changes that improve performance:
 * dataset: random sampling from all training images at each step.
 * dataset: adaptive number of rays during training based on number of points evaluated.
 * model: proposal network for sampling points (non --cuda_ray mode).
@@ -57,11 +57,11 @@ First time running will take some time to compile the CUDA extensions.
 ```bash
 # -O: instant-ngp
 # prune sampling points by maintaining a density grid
-python main.py data/bonsai/ --workspace trial_bonsai_ngp --downscale 4 -O --bound 8
+python main.py data/bonsai/ --workspace trial_bonsai_ngp --enable_cam_center --downscale 4 -O --background random --bound 8
 
 # -O2: nerfstudio nerfacto
 # use proposal network to predict sampling points
-python main.py data/bonsai/ --workspace trial_bonsai_nerfacto --downscale 4 -O2
+python main.py data/bonsai/ --workspace trial_bonsai_nerfacto --enable_cam_center --downscale 4 -O2
 ```
 
 ### Advanced Usage

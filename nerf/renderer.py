@@ -409,8 +409,8 @@ class NeRFRenderer(nn.Module):
         spacing_fn = lambda x: torch.where(x < 1, x / 2, 1 - 1 / (2 * x))
         spacing_fn_inv = lambda x: torch.where(x < 0.5, 2 * x, 1 / (2 - 2 * x))
         
-        s_nears = spacing_fn(nears) # [N]
-        s_fars = spacing_fn(fars) # [N]
+        s_nears = spacing_fn(nears) # [N, 1]
+        s_fars = spacing_fn(fars) # [N, 1]
         
         bins = None
         weights = None
@@ -425,7 +425,7 @@ class NeRFRenderer(nn.Module):
                     bins = bins + (torch.rand_like(bins) - 0.5) / (self.opt.num_steps[prop_iter])
                     bins = bins.clamp(0, 1)
             else:
-                # pdf sampling.
+                # pdf sampling
                 bins = sample_pdf(bins, weights, self.opt.num_steps[prop_iter] + 1, perturb).detach() # [N, T+1]
 
             real_bins = spacing_fn_inv(s_nears * (1 - bins) + s_fars * bins) # [N, T+1] in [near, far]
@@ -477,7 +477,7 @@ class NeRFRenderer(nn.Module):
             results['weights'] = weights
 
             if self.opt.lambda_proposal > 0 and update_proposal:
-                    results['proposal_loss'] = proposal_loss(all_bins, all_weights)
+                results['proposal_loss'] = proposal_loss(all_bins, all_weights)
             
             if self.opt.lambda_distort > 0:
                 results['distort_loss'] = distort_loss(bins, weights)
