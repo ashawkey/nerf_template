@@ -18,10 +18,12 @@ if __name__ == '__main__':
     parser.add_argument('--fp16', action='store_true', help="use amp mixed precision training")
 
     ### testing options
+    parser.add_argument('--save_cnt', type=int, default=50, help="save checkpoints for $ times during training")
+    parser.add_argument('--eval_cnt', type=int, default=10, help="perform validation for $ times during training")
     parser.add_argument('--test', action='store_true', help="test mode")
     parser.add_argument('--test_no_video', action='store_true', help="test mode: do not save video")
     parser.add_argument('--test_no_mesh', action='store_true', help="test mode: do not save mesh")
-    parser.add_argument('--camera_traj', type=str, default='', help="nerfstudio compatible json file for camera trajactory")
+    parser.add_argument('--camera_traj', type=str, default='interp', help="interp for interpolation, circle for circular camera")
 
     ### dataset options
     parser.add_argument('--data_format', type=str, default='colmap', choices=['nerf', 'colmap', 'dtu'])
@@ -80,14 +82,13 @@ if __name__ == '__main__':
     parser.add_argument('--gui', action='store_true', help="start a GUI")
     parser.add_argument('--W', type=int, default=1000, help="GUI width")
     parser.add_argument('--H', type=int, default=1000, help="GUI height")
-    parser.add_argument('--radius', type=float, default=5, help="default GUI camera radius from center")
+    parser.add_argument('--radius', type=float, default=1.5, help="default GUI camera radius from center")
     parser.add_argument('--fovy', type=float, default=50, help="default GUI camera fovy")
     parser.add_argument('--max_spp', type=int, default=1, help="GUI rendering max sample per pixel")
 
     opt = parser.parse_args()
 
     if opt.O:
-        opt.lr = 1e-2
         opt.fp16 = True
         opt.preload = True
         opt.cuda_ray = True
@@ -96,7 +97,6 @@ if __name__ == '__main__':
         opt.random_image_batch = True
     
     if opt.O2:
-        opt.lr = 2e-3
         opt.fp16 = True
         opt.bound = 128 # large enough
         opt.preload = True
@@ -160,15 +160,15 @@ if __name__ == '__main__':
         train_loader = NeRFDataset(opt, device=device, type=opt.train_split).dataloader()
 
         max_epoch = np.ceil(opt.iters / len(train_loader)).astype(np.int32)
-        save_interval = max(1, max_epoch // 50) # save ~50 times during the training
-        eval_interval = max(1, max_epoch // 10)
+        save_interval = max(1, max_epoch // max(1, opt.save_cnt)) # save ~50 times during the training
+        eval_interval = max(1, max_epoch // max(1, opt.eval_cnt))
         print(f'[INFO] max_epoch {max_epoch}, eval every {eval_interval}, save every {save_interval}.')
 
         # colmap can estimate a more compact AABB
         if not opt.contract and opt.data_format == 'colmap':
             model.update_aabb(train_loader._data.pts_aabb)
 
-        scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.1 ** min(iter / opt.iters, 1))
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda iter: 0.1 ** min(iter / opt.iters, 1))
 
         trainer = Trainer('ngp', opt, model, device=device, workspace=opt.workspace, optimizer=optimizer, criterion=criterion, ema_decay=0.95, fp16=opt.fp16, lr_scheduler=scheduler, scheduler_update_every_step=True, use_checkpoint=opt.ckpt, eval_interval=eval_interval, save_interval=save_interval)
 

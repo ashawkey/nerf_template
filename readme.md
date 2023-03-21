@@ -55,24 +55,27 @@ python scripts/colmap2nerf.py --images ./data/custom/images/ --run_colmap # if u
 ### Basics
 First time running will take some time to compile the CUDA extensions.
 ```bash
-# -O: instant-ngp
+## -O: instant-ngp
 # prune sampling points by maintaining a density grid
 python main.py data/bonsai/ --workspace trial_bonsai_ngp --enable_cam_center --downscale 4 -O --background random --bound 8
 
-# -O2: nerfstudio nerfacto
+## -O2: nerfstudio nerfacto
 # use proposal network to predict sampling points
 python main.py data/bonsai/ --workspace trial_bonsai_nerfacto --enable_cam_center --downscale 4 -O2
+
+# MeRF network backbone
+python main.py data/bonsai/ --workspace trial_bonsai_nerfacto --enable_cam_center --downscale 4 -O2 --backbone merf
 ```
 
 ### Advanced Usage
 ```bash
 ### -O: equals
---lr 1e-2 --fp16 --preload
+--fp16 --preload
 --cuda_ray --mark_untrained
 --adaptive_num_rays --random_image_batch
 
 ### -O2: equals
---lr 2e-3 --fp16 --preload
+--fp16 --preload
 --contract --bound 128
 --adaptive_num_rays --random_image_batch 
 
@@ -113,8 +116,15 @@ python main.py data/bonsai/ --workspace trial_bonsai_nerfacto --enable_cam_cente
 Please check the `scripts` directory for more examples on common datasets, and check `main.py` for all options.
 
 ### Performance reference 
-TODO
 
+|        | Bonsai | Counter | Kitchen | Room | Bicycle | Garden | Stump |
+| ---    | --- | --- | --- | --- | --- | --- | --- |
+| MipNeRF 360 (~days)          | 33.46 | 29.55 | 32.23 | 31.63 | 24.57 | 26.98 | 26.40 | 
+| ours-ngp (~8 minutes)        | 28.99 | 25.18 | 26.42 | 28.58 | 21.31 | 23.70 | 22.73 |
+| ours-nerfacto (~12 minutes)  | 31.10 | 26.65 | 30.61 | 31.44 | 23.74 | 25.31 | 25.48 |
+
+Ours are tested on a V100. 
+Please check the commands under `scripts/` to reproduce.
 
 ### Acknowledgement
 This repository is based on:

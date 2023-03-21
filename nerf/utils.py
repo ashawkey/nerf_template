@@ -7,9 +7,6 @@ import random
 import warnings
 import tensorboardX
 
-from pytorch3d.structures import Meshes
-from pytorch3d.loss import mesh_laplacian_smoothing, mesh_normal_consistency, mesh_edge_loss
-
 import numpy as np
 
 import time
@@ -19,7 +16,6 @@ import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
 import torch.distributed as dist
 from torchmetrics.functional import structural_similarity_index_measure

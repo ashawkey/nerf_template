@@ -25,7 +25,7 @@ def uncontract(x):
 
 # # plot a line and a contracted line
 x1 = torch.linspace(-4, 4, 100)
-y1 = x1 + 0.5
+y1 = 1.1 * x1
 x2 = torch.linspace(-4, 4, 100)
 y2 = -0.5 * x1 - 0.1
 
