@@ -47,7 +47,6 @@ if __name__ == '__main__':
     parser.add_argument('--num_steps', type=int, nargs='*', default=[256, 96, 48], help="num steps sampled per ray for each proposal level (only valid when NOT using --cuda_ray)")
     parser.add_argument('--contract', action='store_true', help="apply spatial contraction as in mip-nerf 360, only work for bound > 1, will override bound to 2.")
     parser.add_argument('--background', type=str, default='last_sample', choices=['white', 'random', 'last_sample'], help="training background mode")
-    parser.add_argument('--backbone', type=str, default='ngp', choices=['ngp', 'merf'], help="network backbone")
 
     parser.add_argument('--update_extra_interval', type=int, default=16, help="iter interval to update extra status (only valid when using --cuda_ray)")
     parser.add_argument('--max_ray_batch', type=int, default=4096 * 4, help="batch size of rays at inference to avoid OOM (only valid when NOT using --cuda_ray)")
@@ -64,7 +63,8 @@ if __name__ == '__main__':
 
     # regularizations
     parser.add_argument('--lambda_entropy', type=float, default=0, help="loss scale")
-    parser.add_argument('--lambda_tv', type=float, default=1e-8, help="loss scale")
+    parser.add_argument('--lambda_tv', type=float, default=0, help="loss scale")
+    parser.add_argument('--lambda_wd', type=float, default=0, help="loss scale")
     parser.add_argument('--lambda_proposal', type=float, default=1, help="loss scale (only for non-cuda-ray mode)")
     parser.add_argument('--lambda_distort', type=float, default=0.002, help="loss scale (only for non-cuda-ray mode)")
 
@@ -82,7 +82,7 @@ if __name__ == '__main__':
     parser.add_argument('--gui', action='store_true', help="start a GUI")
     parser.add_argument('--W', type=int, default=1000, help="GUI width")
     parser.add_argument('--H', type=int, default=1000, help="GUI height")
-    parser.add_argument('--radius', type=float, default=1.5, help="default GUI camera radius from center")
+    parser.add_argument('--radius', type=float, default=1, help="default GUI camera radius from center")
     parser.add_argument('--fovy', type=float, default=50, help="default GUI camera fovy")
     parser.add_argument('--max_spp', type=int, default=1, help="GUI rendering max sample per pixel")
 
@@ -117,10 +117,7 @@ if __name__ == '__main__':
     
     seed_everything(opt.seed)
 
-    if opt.backbone == 'merf':
-        from nerf.network_merf import NeRFNetwork
-    else:
-        from nerf.network import NeRFNetwork
+    from nerf.network import NeRFNetwork
 
     model = NeRFNetwork(opt)
     

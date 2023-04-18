@@ -18,7 +18,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
-from torchmetrics.functional import structural_similarity_index_measure
+
+try:
+    from torchmetrics.functional import structural_similarity_index_measure
+except: # old versions
+    from torchmetrics.functional import ssim as structural_similarity_index_measure
 
 import trimesh
 from rich.console import Console
@@ -33,20 +37,6 @@ def custom_meshgrid(*args):
         return torch.meshgrid(*args)
     else:
         return torch.meshgrid(*args, indexing='ij')
-
-def plot_pointcloud(pc, color=None):
-    # pc: [N, 3]
-    # color: [N, 3/4]
-    print('[visualize points]', pc.shape, pc.dtype, pc.min(0), pc.max(0))
-    pc = trimesh.PointCloud(pc, color)
-    # axis
-    axes = trimesh.creation.axis(axis_length=4)
-    # sphere
-    box = trimesh.primitives.Box(extents=(2, 2, 2)).as_outline()
-    box.colors = np.array([[128, 128, 128]] * len(box.entities))
-
-    trimesh.Scene([pc, axes, box]).show()
-
 
 def create_dodecahedron_cameras(radius=1, center=np.array([0, 0, 0])):
 
@@ -200,29 +190,6 @@ def seed_everything(seed):
     torch.cuda.manual_seed(seed)
     #torch.backends.cudnn.deterministic = True
     #torch.backends.cudnn.benchmark = True
-
-
-def torch_vis_2d(x, renormalize=False):
-    # x: [3, H, W], [H, W, 3] or [1, H, W] or [H, W]
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import torch
-    
-    if isinstance(x, torch.Tensor):
-        if len(x.shape) == 3 and x.shape[0] == 3:
-            x = x.permute(1,2,0).squeeze()
-        x = x.detach().cpu().numpy()
-        
-    print(f'[torch_vis_2d] {x.shape}, {x.dtype}, {x.min()} ~ {x.max()}')
-    
-    x = x.astype(np.float32)
-    
-    # renormalize
-    if renormalize:
-        x = (x - x.min(axis=0, keepdims=True)) / (x.max(axis=0, keepdims=True) - x.min(axis=0, keepdims=True) + 1e-8)
-
-    plt.imshow(x)
-    plt.show()
 
 
 class PSNRMeter:
@@ -536,19 +503,16 @@ class Trainer(object):
 
     def post_train_step(self):
 
+        # unscale grad before modifying it!
+        # ref: https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-clipping
+        self.scaler.unscale_(self.optimizer)
+
         # the new inplace TV loss
         if self.opt.lambda_tv > 0:
-
-            # # progressive...
-            # lambda_tv = min(1.0, self.global_step / 10000) * self.opt.lambda_tv
-            lambda_tv = self.opt.lambda_tv
-            
-            # unscale grad before modifying it!
-            # ref: https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-clipping
-            self.scaler.unscale_(self.optimizer)
-
-            # different tv weights for inner and outer points
-            self.model.apply_total_variation(lambda_tv)
+            self.model.apply_total_variation(self.opt.lambda_tv)
+        
+        if self.opt.lambda_wd > 0:
+            self.model.apply_weight_decay(self.opt.lambda_wd)
                 
 
     def eval_step(self, data):

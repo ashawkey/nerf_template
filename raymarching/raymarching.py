@@ -14,7 +14,7 @@ def get_backend():
 
     if BACKEND is None:
         try:
-            import _raymarching as _backend
+            import _raymarching_mob as _backend
         except ImportError:
             from .backend import _backend
 

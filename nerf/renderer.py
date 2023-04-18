@@ -14,12 +14,12 @@ import torch.nn.functional as F
 import raymarching
 from torch_efficient_distloss import eff_distloss
 
-from .utils import custom_meshgrid, plot_pointcloud
+from .utils import custom_meshgrid
 from meshutils import *
 
 @torch.cuda.amp.autocast(enabled=False)
 def distort_loss(bins, weights):
-    # bins: [N, T+1]
+    # bins: [N, T+1], in [0, 1]
     # weights: [N, T]
 
     intervals = bins[..., 1:] - bins[..., :-1]
@@ -166,9 +166,9 @@ class NeRFRenderer(nn.Module):
         self.register_buffer('aabb_train', aabb_train)
         self.register_buffer('aabb_infer', aabb_infer)
 
-        # extra state for cuda raymarching
         self.cuda_ray = opt.cuda_ray
         
+        # extra state for cuda raymarching
         if self.cuda_ray:
             # density grid
             density_grid = torch.zeros([self.cascade, self.grid_size ** 3]) # [CAS, H * H * H]
@@ -177,6 +177,10 @@ class NeRFRenderer(nn.Module):
             self.register_buffer('density_bitfield', density_bitfield)
             self.mean_density = 0
             self.iter_density = 0
+        else:
+            # spacing functions
+            self.spacing_fn = lambda x: torch.where(x < 1, x / 2, 1 - 1 / (2 * x))
+            self.spacing_fn_inv = lambda x: torch.where(x < 0.5, 2 * x, 1 / (2 - 2 * x))
     
     def forward(self, x, d, **kwargs):
         raise NotImplementedError()
@@ -405,12 +409,8 @@ class NeRFRenderer(nn.Module):
             all_bins = []
             all_weights = []
 
-        # sample xyzs using a mixed linear + lindisp function
-        spacing_fn = lambda x: torch.where(x < 1, x / 2, 1 - 1 / (2 * x))
-        spacing_fn_inv = lambda x: torch.where(x < 0.5, 2 * x, 1 / (2 - 2 * x))
-        
-        s_nears = spacing_fn(nears) # [N, 1]
-        s_fars = spacing_fn(fars) # [N, 1]
+        s_nears = self.spacing_fn(nears) # [N, 1]
+        s_fars = self.spacing_fn(fars) # [N, 1]
         
         bins = None
         weights = None
@@ -428,7 +428,7 @@ class NeRFRenderer(nn.Module):
                 # pdf sampling
                 bins = sample_pdf(bins, weights, self.opt.num_steps[prop_iter] + 1, perturb).detach() # [N, T+1]
 
-            real_bins = spacing_fn_inv(s_nears * (1 - bins) + s_fars * bins) # [N, T+1] in [near, far]
+            real_bins = self.spacing_fn_inv(s_nears * (1 - bins) + s_fars * bins) # [N, T+1] in [near, far]
 
             rays_t = (real_bins[..., 1:] + real_bins[..., :-1]) / 2 # [N, T]
 

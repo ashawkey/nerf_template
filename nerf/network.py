@@ -59,6 +59,7 @@ class NeRFNetwork(NeRFRenderer):
             self.prop_encoders.append(prop1_encoder)
             self.prop_mlp.append(prop1_mlp)
 
+
     def common_forward(self, x):
 
         f = self.grid_encoder(x, bound=self.bound)
@@ -99,8 +100,11 @@ class NeRFNetwork(NeRFRenderer):
             'sigma': sigma,
         }
     
-    def apply_total_variation(self, lambda_tv):
-        self.grid_encoder.grad_total_variation(lambda_tv)
+    def apply_total_variation(self, w):
+        self.grid_encoder.grad_total_variation(w)
+
+    def apply_weight_decay(self, w):
+        self.grid_encoder.grad_weight_decay(w)
 
     # optimizer utils
     def get_params(self, lr):

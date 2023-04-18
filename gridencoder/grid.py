@@ -190,3 +190,16 @@ class GridEncoder(nn.Module):
             raise ValueError('grad is None, should be called after loss.backward() and before optimizer.step()!')
 
         _backend.grad_total_variation(inputs, self.embeddings, self.embeddings.grad, self.offsets, weight, B, D, C, L, S, H, self.gridtype_id, self.align_corners)
+    
+    @torch.cuda.amp.autocast(enabled=False)
+    def grad_weight_decay(self, weight=0.1):
+        # level-wise meaned weight decay (ref: zip-nerf)
+        
+        B = self.embeddings.shape[0] # size of embedding
+        C = self.embeddings.shape[1] # embedding dim for each level
+        L = self.offsets.shape[0] - 1 # level
+        
+        if self.embeddings.grad is None:
+            raise ValueError('grad is None, should be called after loss.backward() and before optimizer.step()!')
+
+        _backend.grad_weight_decay(self.embeddings, self.embeddings.grad, self.offsets, weight, B, C, L)

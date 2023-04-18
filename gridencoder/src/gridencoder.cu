@@ -387,7 +387,9 @@ void kernel_grid_wrapper(const float *inputs, const scalar_t *embeddings, const 
         case 2: kernel_grid<scalar_t, D, 2><<<blocks_hashgrid, N_THREAD>>>(inputs, embeddings, offsets, outputs, B, L, S, H, dy_dx, gridtype, align_corners, interp); break;
         case 4: kernel_grid<scalar_t, D, 4><<<blocks_hashgrid, N_THREAD>>>(inputs, embeddings, offsets, outputs, B, L, S, H, dy_dx, gridtype, align_corners, interp); break;
         case 8: kernel_grid<scalar_t, D, 8><<<blocks_hashgrid, N_THREAD>>>(inputs, embeddings, offsets, outputs, B, L, S, H, dy_dx, gridtype, align_corners, interp); break;
-        default: throw std::runtime_error{"GridEncoding: C must be 1, 2, 4, or 8."};
+        case 16: kernel_grid<scalar_t, D, 16><<<blocks_hashgrid, N_THREAD>>>(inputs, embeddings, offsets, outputs, B, L, S, H, dy_dx, gridtype, align_corners, interp); break;
+        case 32: kernel_grid<scalar_t, D, 32><<<blocks_hashgrid, N_THREAD>>>(inputs, embeddings, offsets, outputs, B, L, S, H, dy_dx, gridtype, align_corners, interp); break;
+        default: throw std::runtime_error{"GridEncoding: C must be 1, 2, 4, 8, 16 or 32."};
     }
 }
 
@@ -404,7 +406,7 @@ void grid_encode_forward_cuda(const float *inputs, const scalar_t *embeddings, c
         case 3: kernel_grid_wrapper<scalar_t, 3>(inputs, embeddings, offsets, outputs, B, C, L, max_level, S, H, dy_dx, gridtype, align_corners, interp); break;
         case 4: kernel_grid_wrapper<scalar_t, 4>(inputs, embeddings, offsets, outputs, B, C, L, max_level, S, H, dy_dx, gridtype, align_corners, interp); break;
         case 5: kernel_grid_wrapper<scalar_t, 5>(inputs, embeddings, offsets, outputs, B, C, L, max_level, S, H, dy_dx, gridtype, align_corners, interp); break;
-        default: throw std::runtime_error{"GridEncoding: C must be 1, 2, 4, or 8."};
+        default: throw std::runtime_error{"GridEncoding: D must be 2, 3, 4 or 5."};
     }   
 }
 
@@ -430,7 +432,15 @@ void kernel_grid_backward_wrapper(const scalar_t *grad, const float *inputs, con
             kernel_grid_backward<scalar_t, D, 8, 2><<<blocks_hashgrid, N_THREAD>>>(grad, inputs, embeddings, offsets, grad_embeddings, B, L, S, H, gridtype, align_corners, interp);
             if (dy_dx) kernel_input_backward<scalar_t, D, 8><<<div_round_up(B * D, N_THREAD), N_THREAD>>>(grad, dy_dx, grad_inputs, B, L);
             break;
-        default: throw std::runtime_error{"GridEncoding: C must be 1, 2, 4, or 8."};
+        case 16: 
+            kernel_grid_backward<scalar_t, D, 16, 2><<<blocks_hashgrid, N_THREAD>>>(grad, inputs, embeddings, offsets, grad_embeddings, B, L, S, H, gridtype, align_corners, interp);
+            if (dy_dx) kernel_input_backward<scalar_t, D, 16><<<div_round_up(B * D, N_THREAD), N_THREAD>>>(grad, dy_dx, grad_inputs, B, L);
+            break;
+        case 32: 
+            kernel_grid_backward<scalar_t, D, 32, 2><<<blocks_hashgrid, N_THREAD>>>(grad, inputs, embeddings, offsets, grad_embeddings, B, L, S, H, gridtype, align_corners, interp);
+            if (dy_dx) kernel_input_backward<scalar_t, D, 32><<<div_round_up(B * D, N_THREAD), N_THREAD>>>(grad, dy_dx, grad_inputs, B, L);
+            break;
+        default: throw std::runtime_error{"GridEncoding: C must be 1, 2, 4, 8, 16 or 32."};
     }
 }
 
@@ -448,7 +458,7 @@ void grid_encode_backward_cuda(const scalar_t *grad, const float *inputs, const 
         case 3: kernel_grid_backward_wrapper<scalar_t, 3>(grad, inputs, embeddings, offsets, grad_embeddings, B, C, L, max_level, S, H, dy_dx, grad_inputs, gridtype, align_corners, interp); break;
         case 4: kernel_grid_backward_wrapper<scalar_t, 4>(grad, inputs, embeddings, offsets, grad_embeddings, B, C, L, max_level, S, H, dy_dx, grad_inputs, gridtype, align_corners, interp); break;
         case 5: kernel_grid_backward_wrapper<scalar_t, 5>(grad, inputs, embeddings, offsets, grad_embeddings, B, C, L, max_level, S, H, dy_dx, grad_inputs, gridtype, align_corners, interp); break;
-        default: throw std::runtime_error{"GridEncoding: C must be 1, 2, 4, or 8."};
+        default: throw std::runtime_error{"GridEncoding: D must be 2, 3, 4 or 5."};
     }
 }
 
@@ -630,7 +640,9 @@ void kernel_grad_tv_wrapper(const scalar_t *inputs, const scalar_t *embeddings, 
         case 2: kernel_grad_tv<scalar_t, D, 2><<<blocks_hashgrid, N_THREAD>>>(inputs, embeddings, grad, offsets, weight, B, L, S, H, gridtype, align_corners); break;
         case 4: kernel_grad_tv<scalar_t, D, 4><<<blocks_hashgrid, N_THREAD>>>(inputs, embeddings, grad, offsets, weight, B, L, S, H, gridtype, align_corners); break;
         case 8: kernel_grad_tv<scalar_t, D, 8><<<blocks_hashgrid, N_THREAD>>>(inputs, embeddings, grad, offsets, weight, B, L, S, H, gridtype, align_corners); break;
-        default: throw std::runtime_error{"GridEncoding: C must be 1, 2, 4, or 8."};
+        case 16: kernel_grad_tv<scalar_t, D, 16><<<blocks_hashgrid, N_THREAD>>>(inputs, embeddings, grad, offsets, weight, B, L, S, H, gridtype, align_corners); break;
+        case 32: kernel_grad_tv<scalar_t, D, 32><<<blocks_hashgrid, N_THREAD>>>(inputs, embeddings, grad, offsets, weight, B, L, S, H, gridtype, align_corners); break;
+        default: throw std::runtime_error{"GridEncoding: C must be 1, 2, 4, 8, 16 or 32."};
     }
 }
 
@@ -642,7 +654,7 @@ void grad_total_variation_cuda(const scalar_t *inputs, const scalar_t *embedding
         case 3: kernel_grad_tv_wrapper<scalar_t, 3>(inputs, embeddings, grad, offsets, weight, B, C, L, S, H, gridtype, align_corners); break;
         case 4: kernel_grad_tv_wrapper<scalar_t, 4>(inputs, embeddings, grad, offsets, weight, B, C, L, S, H, gridtype, align_corners); break;
         case 5: kernel_grad_tv_wrapper<scalar_t, 5>(inputs, embeddings, grad, offsets, weight, B, C, L, S, H, gridtype, align_corners); break;
-        default: throw std::runtime_error{"GridEncoding: C must be 1, 2, 4, or 8."};
+        default: throw std::runtime_error{"GridEncoding: D must be 2, 3, 4, or 5."};
     }   
 }
 
@@ -652,5 +664,50 @@ void grad_total_variation(const at::Tensor inputs, const at::Tensor embeddings, 
     AT_DISPATCH_FLOATING_TYPES_AND_HALF(
     embeddings.scalar_type(), "grad_total_variation", ([&] {
         grad_total_variation_cuda<scalar_t>(inputs.data_ptr<scalar_t>(), embeddings.data_ptr<scalar_t>(), grad.data_ptr<scalar_t>(), offsets.data_ptr<int>(), weight, B, D, C, L, S, H, gridtype, align_corners);
+    }));
+}
+
+template <typename scalar_t>
+__global__ void kernel_grad_wd(
+    const scalar_t * __restrict__ grid, 
+    scalar_t * __restrict__ grad, 
+    const int * __restrict__ offsets, 
+    const float weight,
+    const uint32_t B, const uint32_t L, const uint32_t C
+) {
+    const uint32_t b = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (b >= B * C) return;
+
+    // locate
+    grid += b;
+    grad += b;
+
+    // decide in which level is this thread... 
+    uint32_t level = 0;
+    const uint32_t n = b / C;
+    // binary search b in offsets
+    uint32_t l = 0, r = L;
+    while (l < r) {
+        uint32_t m = (l + r) / 2;
+        if (offsets[m] <= n) {
+            level = m;
+            l = m + 1;
+        } else {
+            r = m;
+        }
+    }
+
+    const uint32_t hashmap_size = offsets[level + 1] - offsets[level];
+    grad[0] += 2 * weight * grid[0] / hashmap_size;
+}
+
+void grad_weight_decay(const at::Tensor embeddings, at::Tensor grad, const at::Tensor offsets, const float weight, const uint32_t B, const uint32_t C, const uint32_t L) {
+
+    AT_DISPATCH_FLOATING_TYPES_AND_HALF(
+    embeddings.scalar_type(), "grad_weight_decay", ([&] {
+        static constexpr uint32_t N_THREAD = 1024;
+        const dim3 blocks_hashgrid = { div_round_up(B * C, N_THREAD), 1, 1 };
+        kernel_grad_wd<scalar_t><<<blocks_hashgrid, N_THREAD>>>(embeddings.data_ptr<scalar_t>(), grad.data_ptr<scalar_t>(), offsets.data_ptr<int>(), weight, B, L, C);
     }));
 }
