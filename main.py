@@ -54,7 +54,7 @@ if __name__ == '__main__':
     parser.add_argument('--mark_untrained', action='store_true', help="mark_untrained grid")
     parser.add_argument('--dt_gamma', type=float, default=1/256, help="dt_gamma (>=0) for adaptive ray marching. set to 0 to disable, >0 to accelerate rendering (but usually with worse quality)")
     parser.add_argument('--density_thresh', type=float, default=10, help="threshold for density grid to be occupied")
-    parser.add_argument('--diffuse_step', type=int, default=1000, help="training iters that only trains diffuse color for better initialization")
+    parser.add_argument('--diffuse_step', type=int, default=0, help="training iters that only trains diffuse color for better initialization")
     
     # batch size related
     parser.add_argument('--num_rays', type=int, default=4096, help="num rays sampled per image for each training step")
